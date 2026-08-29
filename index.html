@@ -1,0 +1,122 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Gato Shooter Bastard</title>
+<style>
+html,body{margin:0;height:100%;background:#080b0d;color:#eee;font-family:system-ui,sans-serif;overflow:hidden}
+#wrap{position:relative;width:100vw;height:100vh}
+canvas{display:block;width:100%;height:100%;background:radial-gradient(circle at center,#243329,#0a0d0c 70%)}
+#hud{position:absolute;left:18px;top:14px;background:#000a;padding:12px 15px;border:1px solid #777;border-radius:10px}
+#title{font-weight:900;font-size:20px;letter-spacing:1px}
+#status{margin-top:5px}
+#help{position:absolute;right:18px;top:14px;background:#000a;padding:10px 13px;border-radius:10px;text-align:right;font-size:13px}
+#overlay{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;pointer-events:none}
+#message{font-weight:900;font-size:clamp(28px,6vw,70px);text-align:center;text-shadow:0 3px 12px #000;opacity:0}
+#start{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);padding:16px 28px;font-size:22px;font-weight:900;border:2px solid #fff;border-radius:12px;background:#111;color:#fff;cursor:pointer}
+</style>
+</head>
+<body>
+<div id="wrap">
+<canvas id="game"></canvas>
+<div id="hud"><div id="title">🦗 GATO SHOOTER BASTARD</div><div id="status">Click START. Find the bastard.</div></div>
+<div id="help">WASD / arrows: move<br>Mouse: aim & shoot<br>R: restart</div>
+<div id="overlay"><div id="message"></div></div>
+<button id="start">START THE BASTARD</button>
+</div>
+<script>
+const c=document.getElementById('game'),ctx=c.getContext('2d');
+const status=document.getElementById('status'),msg=document.getElementById('message'),start=document.getElementById('start');
+const gatoImg=new Image(); gatoImg.src='gato_profile.png';
+const grass=new Audio('grasshopper_noises_#4-1788025266989.mp3'); grass.preload='auto';
+let W,H,dpr,playing=false,keys={},shots=[],particles=[],last=0,score=0,disappearTimer=0,nextDisappear=5;
+const player={x:0,y:0,r:18,speed:280};
+const gato={x:0,y:0,r:40,visible:true,phase:0,respawn:0};
+
+function resize(){dpr=devicePixelRatio||1;W=innerWidth;H=innerHeight;c.width=W*dpr;c.height=H*dpr;ctx.setTransform(dpr,0,0,dpr,0,0)}
+addEventListener('resize',resize);resize();
+addEventListener('keydown',e=>{keys[e.key.toLowerCase()]=true;if(e.key.toLowerCase()==='r')reset()});
+addEventListener('keyup',e=>keys[e.key.toLowerCase()]=false);
+
+function reset(){
+  player.x=W/2;player.y=H/2;gato.x=100+Math.random()*(W-200);gato.y=120+Math.random()*(H-220);
+  gato.visible=true;gato.respawn=0;disappearTimer=0;nextDisappear=4+Math.random()*4;
+  shots=[];particles=[];score=0;playing=true;start.style.display='none';msg.style.opacity=0;
+  status.textContent='Gato detected. Hunt the bastard.';
+}
+start.onclick=reset;
+
+function say(t){msg.textContent=t;msg.style.opacity=1;setTimeout(()=>msg.style.opacity=0,1300)}
+function boom(x,y){for(let i=0;i<14;i++)particles.push({x,y,vx:(Math.random()-.5)*240,vy:(Math.random()-.5)*240,life:.5})}
+function shoot(tx,ty){
+ if(!playing)return;
+ const a=Math.atan2(ty-player.y,tx-player.x);
+ shots.push({x:player.x,y:player.y,vx:Math.cos(a)*720,vy:Math.sin(a)*720,life:1});
+}
+c.addEventListener('click',e=>shoot(e.clientX,e.clientY));
+
+function update(dt){
+ let dx=(keys.d||keys.arrowright?1:0)-(keys.a||keys.arrowleft?1:0);
+ let dy=(keys.s||keys.arrowdown?1:0)-(keys.w||keys.arrowup?1:0);
+ if(dx||dy){let n=Math.hypot(dx,dy);player.x+=dx/n*player.speed*dt;player.y+=dy/n*player.speed*dt}
+ player.x=Math.max(25,Math.min(W-25,player.x));player.y=Math.max(80,Math.min(H-25,player.y));
+
+ if(gato.visible){
+   gato.phase+=dt;
+   const a=Math.atan2(player.y-gato.y,player.x-gato.x);
+   gato.x+=Math.cos(a+Math.sin(gato.phase)*.7)*30*dt;
+   gato.y+=Math.sin(a+Math.sin(gato.phase)*.7)*30*dt;
+   disappearTimer+=dt;
+   if(disappearTimer>nextDisappear){
+     gato.visible=false;gato.respawn=2.8;disappearTimer=0;
+     grass.currentTime=0;grass.play().catch(()=>{});
+     say('🦗 GRASSHOPPER MODE 🦗');
+     status.textContent='GATO HAS VANISHED. FOLLOW THE FUCKING GRASSHOPPERS.';
+   }
+ }else{
+   gato.respawn-=dt;
+   if(gato.respawn<=0){
+     gato.x=80+Math.random()*(W-160);gato.y=110+Math.random()*(H-190);gato.visible=true;
+     nextDisappear=4+Math.random()*4;
+     status.textContent='GATO FOUND. FIRE.';
+     say('GATO FOUND');
+   }
+ }
+ for(const s of shots){s.x+=s.vx*dt;s.y+=s.vy*dt;s.life-=dt}
+ shots=shots.filter(s=>s.life>0&&s.x>-20&&s.x<W+20&&s.y>-20&&s.y<H+20);
+ if(gato.visible){
+   for(const s of shots){
+     if(Math.hypot(s.x-gato.x,s.y-gato.y)<gato.r){
+       score++;boom(gato.x,gato.y);
+       gato.x=80+Math.random()*(W-160);gato.y=100+Math.random()*(H-180);
+       nextDisappear=2+Math.random()*4;
+       status.textContent=`HIT! Gato bastard score: ${score}`;
+     }
+   }
+ }
+ for(const p of particles){p.x+=p.vx*dt;p.y+=p.vy*dt;p.life-=dt}
+ particles=particles.filter(p=>p.life>0);
+}
+
+function draw(){
+ ctx.clearRect(0,0,W,H);
+ // battlefield
+ ctx.fillStyle='rgba(30,55,39,.25)';
+ for(let i=0;i<80;i++){let x=(i*137)%W,y=80+((i*83)%Math.max(1,H-80));ctx.fillRect(x,y,2,2)}
+ // player
+ ctx.save();ctx.translate(player.x,player.y);ctx.fillStyle='#d8d8d8';ctx.beginPath();ctx.arc(0,0,18,0,7);ctx.fill();
+ ctx.fillStyle='#222';ctx.fillRect(8,-5,25,10);ctx.restore();
+ // gato profile icon
+ if(gato.visible && gatoImg.complete){
+   ctx.save();ctx.globalAlpha=.98;ctx.drawImage(gatoImg,gato.x-gato.r,gato.y-gato.r,gato.r*2,gato.r*2);ctx.restore();
+   ctx.strokeStyle='#6ee7ff';ctx.lineWidth=2;ctx.beginPath();ctx.arc(gato.x,gato.y,gato.r+4,0,7);ctx.stroke();
+ }
+ for(const s of shots){ctx.fillStyle='#fff';ctx.beginPath();ctx.arc(s.x,s.y,4,0,7);ctx.fill()}
+ for(const p of particles){ctx.globalAlpha=Math.max(0,p.life*2);ctx.fillStyle='#fff';ctx.fillRect(p.x,p.y,4,4);ctx.globalAlpha=1}
+}
+function loop(t){let dt=Math.min(.033,(t-last)/1000||0);last=t;if(playing)update(dt);draw();requestAnimationFrame(loop)}
+requestAnimationFrame(loop);
+</script>
+</body>
+</html>
